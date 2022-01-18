@@ -1,0 +1,240 @@
+---
+title: "Szanse i czynniki przeżycia katastrofy Titanica"
+author: "Paweł Lurka"
+date: "18/01/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Przedstawienie problemu
+
+W niniejszym raporcie przedstawiono szansę jaką na przeżycie mieli pasażerowie statku pasażerskiego Titanic oraz od jakich czynników ona zależała.
+Spośród wszystkich atrybutów zbioru Titanic oczyszczonego z brakujących i niespójnych danych w poprzednim zadaniu wybrano te, które mogły mieć decydujący wpływ na przeżywalność pasażerów.
+
+```{r dataset, echo=FALSE}
+dataset <- read.csv("E:\\Studia\\Magisterka\\3sem\\Systemy Inteligentne w Biznesie\\Czyszczenie\\TitanicCleaned.tsv", header=T, sep="	", dec=",")
+dataset <- transform(dataset, Survived = Survived == 1)
+summary(dataset)
+```
+
+#### Wybrane atrybuty:
+1. Płeć (Sex)
+ - w sytuacjach kryzysowych najpierw ratowane są kobiety i dzieci, dopiero później ratuje się mężczyzn więc płeć może mieć decydujące znaczenie w kwestii przetrwania
+2. Wiek (Age)
+ - jak wyżej, większe prawdopodobieństwo przetrwania najmłodszych
+3. Klasa biletu (Pclass)
+ - zasobność portfela i poziom obsługi zależny od klasy zakupionego biletu też może mieć spore znaczenie w wypadku katastrofy, przypuszczalnie, procentowo większy udział uratowanych będzie mieć klasa 1 biletów (najwyższa) niż klasa 3cia (najniższa)
+4. Liczba rodziców/dzieci (Parch)
+ - jeśli pierwsze są ratowane kobiety i dzieci, być może osoby z dziećmi/rodzicami będą miały większy współczynnik przeżywalności niż te które dzieci nie mają
+5. Liczba rodzeństwa/małżonków (SibSp)
+ - na pierwszy rzut oka nie powinno mieć to większego wpływu na przetrwanie ale warto sprawdzić czy nie istnieje jakaś korelacja między tym atrybutem a przeżywalnością, a jeśli tak to z czego wynika (czy np. osoby z większą ilością rodzeństwa, małżonków wybierały wyższą klasę biletu)
+6. Port odprawy (Embarked)
+ - atrybut raczej nie wpływający na przeżywalność ale być może z nim skorelowany, a jeśli tak to najprawdopodobniej będzie miało znaczenie powiązanie z którymś z bardziej znaczących atrybutów
+
+
+## Płeć
+
+Na początek sprawdźmy zależność przetrwania od płci pasażera.
+
+```{r sex, echo=FALSE, warning=FALSE}
+library("ggplot2")
+library("ggthemes")
+ggplot(dataset, aes(Sex)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Płeć") + ylab("Ilość")
+
+survWomen <- nrow(dataset[dataset$Sex == "female" & dataset$Survived == TRUE,])
+allWomen <- nrow(dataset[dataset$Sex == "female",])
+femSurvRatePerc <- 100*survWomen/allWomen
+survMen <- nrow(dataset[dataset$Sex == "male" & dataset$Survived == TRUE,])
+allMen <- nrow(dataset[dataset$Sex == "male",])
+malSurvRatePerc <- 100*survMen/allMen
+```
+
+### Przeżywalność a płeć
+
+ - Liczba kobiet które przeżyły katastrofę to `r survWomen`. Wszystkich kobiet było na statku `r allWomen` co oznacza, że przeżyło `r femSurvRatePerc`% wszystkich kobiet.
+
+ - Liczba mężczyzn którzy przeżyli katastrofę to `r survMen`. Wszystkich mężczyzn było na statku `r allMen ` co oznacza, że przeżyło `r malSurvRatePerc`% wszystkich mężczyzn.
+
+ - Jak widać, początkowe przypuszczenia potwierdziły się ponieważ szansa przeżycia dla kobiet była `r femSurvRatePerc/malSurvRatePerc` razy większa niż dla meżczyzn.
+
+## Wiek
+
+Kolejną rzeczą którą można sprawdzić jest zależność przetrwania od wieku pasażera
+
+```{r age, echo=FALSE}
+ggplot(dataset, aes(cut(Age,breaks=16))) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + theme(axis.text.x = element_text(angle = 45)) + xlab("Wiek") + ylab("Ilość")
+```
+
+Spójrzmy na prawdopodobieństwo przetrwania dla każdej kategorii wiekowej
+
+```{r ageSurvPerc, echo=FALSE, warning=FALSE}
+datasetAgeCat <- dataset
+datasetAgeCat$Age <- cut(datasetAgeCat$Age,breaks=16)
+library("hardhat")
+ageIntervals <- get_levels(datasetAgeCat)$Age
+survRate <- seq(1,16,1)
+ageToSurv <-data.frame(ageIntervals, survRate)
+
+for (x in seq(1,16,1)) {
+  ageToSurv$survRate[x] <- nrow(datasetAgeCat[datasetAgeCat$Age == ageToSurv$ageIntervals[x] & datasetAgeCat$Survived == TRUE,]) / nrow(datasetAgeCat[datasetAgeCat$Age == ageToSurv$ageIntervals[x],])
+  ageToSurv$order[x] <- x
+}
+
+ggplot(ageToSurv, aes(reorder(ageIntervals, order), survRate)) + geom_bar(stat="identity", width=.5, fill=survRate) + theme(axis.text.x = element_text(angle = 45)) + xlab("Wiek") + ylab("Prawdopodobieństwo przetrwania")
+
+subset (ageToSurv, select = -order)
+```
+
+### Przeżywalność a wiek
+
+ - Widać tutaj że osoba w wieku 80 lat miała największe prawdopodobieństwo przetrwania ale dane są przekłamane ponieważ był to jeden odosobniony przypadek.
+ - Poza nim największe szanse przetrwania mają osoby w najmłodszym wieku czyli zgodnie z oczekiwaniami.
+ - Wśród dzieci w przedziale wiekowym `r ageToSurv$ageIntervals[2]` z jakiegoś powodu przeżywalność była wyraźnie mniejsza.
+Mogło to mieć związek z przypadkami losowymi lub przekłamaniem danych z powodu usunięcia niekompletnych przypadków ze zbioru.
+
+
+## Klasa biletu
+
+```{r Pclass, echo=FALSE, warning=FALSE}
+ggplot(dataset, aes(Pclass)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Klasa biletu") + ylab("Ilość")
+
+```
+
+Spójrzmy na prawdopodobieństwo przetrwania dla każdej klasy biletu
+
+```{r classSurvPerc, echo=FALSE, warning=FALSE}
+classes <- seq(1,3,1)
+survRate <- seq(1,3,1)
+classToSurv <- data.frame(classes, survRate)
+
+for (x in seq(1,3,1)) {
+  classToSurv$survRate[x] <- nrow(dataset[dataset$Pclass == classToSurv$classes[x] & dataset$Survived == TRUE,]) / nrow(dataset[dataset$Pclass == classToSurv$classes[x],])
+  classToSurv$order[x] <- x
+}
+
+ggplot(classToSurv, aes(reorder(classes, order), survRate)) + geom_bar(stat="identity", width=.5, fill=survRate) + xlab("Klasa biletu") + ylab("Prawdopodobieństwo przetrwania")
+
+subset (classToSurv, select = -order)
+```
+
+### Przeżywalność a klasa biletu
+
+ - zgodnie z oczekiwaniami wykres pokazuje, że największą szansę na przeżycie katastrofy miały osoby posiadające bilet w najwyższej klasie
+ 
+
+## Liczba rodziców/dzieci oraz rodzeństwa/małżonków a prawdopodobieństwo przetrwania
+
+### Liczba rodziców/dzieci
+```{r Parch, echo=FALSE, warning=FALSE}
+ggplot(dataset, aes(Parch)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Liczba rodziców/dzieci") + ylab("Ilość")
+
+parch <- seq(0,5,1)
+survRate <- seq(1,6,1)
+parchToSurv <- data.frame(parch, survRate)
+
+for (x in seq(1,6,1)) {
+  parchToSurv$survRate[x] <- nrow(dataset[dataset$Parch == parchToSurv$parch[x] & dataset$Survived == TRUE,]) / nrow(dataset[dataset$Parch == parchToSurv$parch[x],])
+  parchToSurv$order[x] <- x
+}
+
+ggplot(parchToSurv, aes(reorder(parch, order), survRate)) + geom_bar(stat="identity", width=.5, fill=survRate) + xlab("Liczba rodziców/dzieci") + ylab("Prawdopodobieństwo przetrwania")
+
+subset (parchToSurv, select = -order)
+```
+
+### Przeżywalność a rodzice/dzieci
+
+ - Jak widać przypuszczenia odnośnie większej szansy przetrwania przy większej liczbie rodziców/dzieci sprawdziły się tylko do liczby 3. Potem przeżywalność znowu maleje.
+ - Jak widać przeżywalność dla 4 sztuk dzieci/rodziców była zerowa ale może mieć to związek z innymu czynnikami.
+ 
+```{r 4Parch, echo=FALSE, warning=FALSE}
+subset(dataset[dataset$Parch == 4,])
+
+```
+ - po podejrzeniu tych wpisów widać, że większość z tych osób miała wykupione biletyw 3ciej klasie co już samo drastycznie zmniejszało szansę na przetrwanie
+ 
+### Liczba rodzeństwa/małżonków
+
+```{r SibSp, echo=FALSE, warning=FALSE}
+ggplot(dataset, aes(SibSp)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Liczba rodzeństwa/małżonków") + ylab("Ilość")
+
+sibsp <- seq(0,5,1)
+survRate <- seq(1,6,1)
+sibspToSurv <- data.frame(sibsp, survRate)
+
+for (x in seq(1,6,1)) {
+  sibspToSurv$survRate[x] <- nrow(dataset[dataset$SibSp == sibspToSurv$sibsp[x] & dataset$Survived == TRUE,]) / nrow(dataset[dataset$SibSp == sibspToSurv$sibsp[x],])
+  sibspToSurv$order[x] <- x
+}
+
+ggplot(sibspToSurv, aes(reorder(sibsp, order), survRate)) + geom_bar(stat="identity", width=.5, fill=survRate) + xlab("Liczba rodzeństwa/małżonków") + ylab("Prawdopodobieństwo przetrwania")
+
+subset (sibspToSurv, select = -order)
+```
+
+### Przeżywalność a rodzeństwo/małżonkowie
+
+- widać, że największą szansę na przeżycie mieli ludzie którzy wybrali się z jednym bratem/siostrą lub małżonkiem
+- można sprawdzić czym się charakteryzowały pozycje posiadające 5 spokrewnionych osób
+
+```{r SibSpDiff, echo=FALSE, warning=FALSE}
+subset(dataset[dataset$SibSp == 5,])
+
+```
+- widać, że wszystkie te osoby miały zakupioiny 1 bilet w 3ciej klasie i byli to w większości meżczyźni więc to mogło spowodować ich niską przeżywalność
+
+
+## Port odprawy
+
+Ostatnim elementem który może pokazać ciekawe wyniki jest port odprawy.
+
+```{r embarkedSurvPerc, echo=FALSE, warning=FALSE}
+ggplot(dataset, aes(Embarked)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Port odprawy") + ylab("Ilość")
+
+
+embarked <- c("C","Q","S")
+survRate <- seq(1,3,1)
+embarkedToSurv <- data.frame(embarked, survRate)
+
+for (x in seq(1,3,1)) {
+  embarkedToSurv$survRate[x] <- nrow(dataset[dataset$Embarked == embarkedToSurv$embarked[x] & dataset$Survived == TRUE,]) / nrow(dataset[dataset$Embarked == embarkedToSurv$embarked[x],])
+  embarkedToSurv$order[x] <- x
+}
+
+ggplot(embarkedToSurv, aes(reorder(embarked, order), survRate)) + geom_bar(stat="identity", width=.5, fill=survRate) + xlab("Port odprawy") + ylab("Prawdopodobieństwo przetrwania")
+
+subset (embarkedToSurv, select = -order)
+```
+
+### Przeżywalność a port odprawy
+
+- na wykresie widać, że mimo iż stosunkowo niewiele osób odpływało z portu w Cherbourg to miałY one wyraźnie największe prawdopodobieństwo przetrwania
+- sprawdźmy rozkład klas biletów odpływających z tego portu
+
+```{r PclassEmb, echo=FALSE, warning=FALSE}
+ggplot(subset(dataset[dataset$Embarked == "C",]), aes(Pclass)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Klasa biletu") + ylab("Ilość")
+
+```
+
+- zaczyna być widać dlaczego największe prawdopodobieństwo przetrwania było przy wypływaniu z tego portu, ale można sprawdzić rozkład płci odpływających z tego miejsca
+
+```{r sexEmb, echo=FALSE, warning=FALSE}
+ggplot(subset(dataset[dataset$Embarked == "C",]), aes(Sex)) + geom_bar(aes(fill=Survived), width=0.5) + scale_fill_brewer(palette = "Dark2") + xlab("Płeć") + ylab("Ilość")
+```
+
+## Podsumowanie
+
+ - Po analizie danych pod wieloma kątami wygląda na to, że głównymi czynnikami dla przetrwania były płeć i klasa biletu, zaraz potem wiek a reszta czynników była skorelowana z przetrwaniem ale niekoniecznie wpływała na nie
+ - największą szansę przetrwania na Titanicu miały kobiety i dzieci płynące pierwszą klasą, zgodnie z przewidywaniami
+ 
+ 
+ 
+ 
+ 
+ 
+ 
